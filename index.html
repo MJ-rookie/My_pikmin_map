@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>明信片雲端紀錄 - 使用者紀錄版</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <style>
+        /* 保持原本的 CSS 樣式不變 */
+        :root { --primary: #2563eb; --edit: #7c3aed; --bg: #f8fafc; --danger: #ef4444; --border: #e2e8f0; --mush: #ec4899; --flower: #f59e0b; }
+        html, body { height: 100%; margin: 0; overflow: hidden; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: #1e293b; }
+        .main-wrapper { display: flex; flex-direction: column; height: 100vh; padding: 10px; box-sizing: border-box; }
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; height: 100%; gap: 15px; }
+        @media (min-width: 768px) { .container { flex-direction: row; align-items: flex-start; } .card { width: 350px; flex-shrink: 0; } #recordList { flex-grow: 1; } }
+        .card { background: white; padding: 15px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); box-sizing: border-box; flex-shrink: 0; }
+        h2 { margin: 0 0 10px 0; color: var(--primary); text-align: center; font-size: 1.3rem; }
+        .edit-mode-title { color: var(--edit) !important; }
+        label { font-size: 0.8rem; color: #64748b; margin-bottom: 2px; display: block; margin-top: 5px; }
+        input, select, button { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-size: 0.95rem; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; margin-top: 3px; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .btn-auth { background: #4285F4; margin-bottom: 10px; }
+        .btn-update { background: var(--edit); }
+        .btn-cancel { background: #94a3b8; }
+        #preview-container { width: 100%; max-height: 120px; margin-top: 5px; display: none; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: #eee; }
+        #preview { width: 100%; height: auto; max-height: 120px; display: block; object-fit: contain; }
+        #recordList { flex-grow: 1; overflow-y: auto; padding-bottom: 20px; height: 100%; -webkit-overflow-scrolling: touch; }
+        .item-card { background: white; border-radius: 12px; overflow: hidden; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+        .item-card img { width: 100%; height: auto; display: block; background: #f1f5f9; min-height: 100px; cursor: pointer; }
+        .item-info { padding: 12px; border-top: 1px solid var(--border); }
+        .item-text h3 { margin: 0; font-size: 1rem; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+        .badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 20px; color: white; font-weight: normal; }
+        .badge-mush { background: var(--mush); }
+        .badge-flower { background: var(--flower); }
+        .item-text p { color: #64748b; font-size: 0.8rem; margin: 4px 0 0 0; }
+        .item-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .btn-small { width: auto; padding: 5px 12px; font-size: 0.75rem; margin: 0; flex: 1; }
+        .btn-edit-action { background: var(--edit); }
+        .btn-delete-action { background: var(--danger); }
+        .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+        .btn-export { background: #059669; }
+        .btn-import { background: #f59e0b; }
+        #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); color: var(--primary); justify-content: center; align-items: center; font-weight: bold; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">處理中...</div>
+
+<div class="main-wrapper">
+    <div class="container">
+        <div class="card">
+            <h2 id="form-title">📍 明信片雲端紀錄</h2>
+            <button id="auth_btn" class="btn-auth" onclick="handleAuthClick()">連結 Google 帳號</button>
+            <div id="user_display" style="font-size:0.75rem; color:#64748b; text-align:center; margin-bottom:10px;">目前未登入</div>
+
+            <label>地點名稱</label>
+            <input type="text" id="locName" placeholder="地點名稱">
+            <label>類別</label>
+            <select id="category">
+                <option value="菇">🍄 菇類</option>
+                <option value="花">🌸 花卉</option>
+            </select>
+            <label>座標</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="lat" placeholder="緯度" step="any">
+                <input type="number" id="lng" placeholder="經度" step="any">
+            </div>
+            <label>檔案上傳</label>
+            <input type="file" id="fileInput" accept="image/*" onchange="processImage(this)">
+            <div id="preview-container"><img id="preview"></div>
+            <button id="save-btn" onclick="saveRecord()" disabled>✅ 儲存紀錄</button>
+            <button id="cancel-btn" class="btn-cancel" onclick="cancelEdit()" style="display: none;">❌ 取消修改</button>
+            <div class="tools">
+                <button class="btn-export" onclick="exportData()">📤 匯出</button>
+                <button class="btn-import" onclick="document.getElementById('importFile').click()">📥 匯入</button>
+            </div>
+            <input type="file" id="importFile" style="display: none;" accept=".json" onchange="importData(this)">
+        </div>
+        <div id="recordList"></div>
+    </div>
+</div>
+
+<script>
+    const CLIENT_ID = '30705957391-knin529rrok93vikmsbv8vfbtbe5lvlg.apps.googleusercontent.com';
+    const API_KEY = 'AIzaSyACs1du7WYKyAAv20jkEP6GYHTHSbttDTg';
+    const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest";
+    // 更新 SCOPES：加入讀取 email 的權限
+    const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
+
+    let tokenClient;
+    let currentUserEmail = "未知帳號";
+    let finalBase64Image = "";
+    let rawFile = null;
+    let editingId = null;
+
+    function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); }); }
+    function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID, scope: SCOPES, callback: async (resp) => {
+                if (resp.error) return;
+                // 獲取使用者帳號資訊
+                const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${resp.access_token}` }
+                }).then(res => res.json());
+                
+                currentUserEmail = userInfo.email;
+                document.getElementById('user_display').innerText = `登入帳號：${currentUserEmail}`;
+                document.getElementById('auth_btn').innerText = "✅ 已連結 Google";
+                document.getElementById('save-btn').disabled = false;
+            }
+        });
+    }
+
+    function handleAuthClick() { tokenClient.requestAccessToken({prompt: 'consent'}); }
+
+    function processImage(input) {
+        rawFile = input.files[0];
+        if (!rawFile) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width, height = img.height;
+                const MAX = 300;
+                if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } }
+                else { if (height > MAX) { width *= MAX / height; height = MAX; } }
+                canvas.width = width; canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                finalBase64Image = canvas.toDataURL('image/jpeg', 0.5);
+                document.getElementById('preview').src = e.target.result;
+                document.getElementById('preview-container').style.display = 'block';
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(rawFile);
+    }
+
+    async function uploadToDrive(file) {
+        const metadata = { 'name': `Postcard_${Date.now()}.jpg`, 'mimeType': 'image/jpeg' };
+        const formData = new FormData();
+        formData.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
+        formData.append('file', file);
+        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+            method: 'POST',
+            headers: new Headers({'Authorization': 'Bearer ' + gapi.client.getToken().access_token}),
+            body: formData
+        });
+        const res = await response.json();
+        return res.id;
+    }
+
+    async function saveRecord() {
+        const name = document.getElementById('locName').value;
+        const lat = document.getElementById('lat').value;
+        const lng = document.getElementById('lng').value;
+        if (!name || !lat) return alert("資訊不完整");
+
+        document.getElementById('loading-overlay').style.display = 'flex';
+        try {
+            let driveId = rawFile ? await uploadToDrive(rawFile) : null;
+            let data = JSON.parse(localStorage.getItem('myMapData_v3') || '[]');
+            
+            if (editingId) {
+                const idx = data.findIndex(r => r.id === editingId);
+                data[idx] = { ...data[idx], name, category: document.getElementById('category').value, lat, lng, image: finalBase64Image || data[idx].image, driveId: driveId || data[idx].driveId, updateTime: new Date().toLocaleString(), user: currentUserEmail };
+            } else {
+                data.push({ id: Date.now(), name, category: document.getElementById('category').value, lat, lng, image: finalBase64Image, driveId, time: new Date().toLocaleString(), user: currentUserEmail });
+            }
+            
+            localStorage.setItem('myMapData_v3', JSON.stringify(data));
+            cancelEdit();
+            renderList();
+        } catch (e) { alert("儲存失敗，請重新連線"); }
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+
+    function renderList() {
+        const data = JSON.parse(localStorage.getItem('myMapData_v3') || '[]');
+        const list = document.getElementById('recordList');
+        list.innerHTML = data.slice().reverse().map(r => `
+            <div class="item-card">
+                <img src="${r.driveId ? `https://drive.google.com/thumbnail?id=${r.driveId}&sz=w800` : r.image}" onclick="if('${r.driveId}') window.open('https://drive.google.com/file/d/${r.driveId}/view')">
+                <div class="item-info">
+                    <div class="item-text">
+                        <h3>${r.name} <span class="badge ${r.category === '菇' ? 'badge-mush' : 'badge-flower'}">${r.category === '菇' ? '🍄 菇' : '🌸 花'}</span></h3>
+                        <p>🌐 ${r.lat}, ${r.lng}</p>
+                        <p style="font-size:0.65rem; color:#a1a1aa; margin-top:2px;">📅 ${r.updateTime || r.time}</p>
+                        <p style="font-size:0.65rem; color:#2563eb; font-weight:bold;">👤 紀錄者：${r.user || '未知'}</p>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-edit-action" onclick="startEdit(${r.id})">修改</button>
+                        <button class="btn-small btn-delete-action" onclick="deleteItem(${r.id})">刪除</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function startEdit(id) {
+        const item = JSON.parse(localStorage.getItem('myMapData_v3')).find(r => r.id === id);
+        editingId = id;
+        document.getElementById('locName').value = item.name;
+        document.getElementById('category').value = item.category;
+        document.getElementById('lat').value = item.lat;
+        document.getElementById('lng').value = item.lng;
+        document.getElementById('form-title').innerText = "✏️ 修改中";
+        document.getElementById('cancel-btn').style.display = 'block';
+    }
+
+    function cancelEdit() {
+        editingId = null; rawFile = null; finalBase64Image = "";
+        document.getElementById('locName').value = ""; document.getElementById('preview-container').style.display = 'none';
+        document.getElementById('form-title').innerText = "📍 明信片雲端紀錄";
+        document.getElementById('cancel-btn').style.display = 'none';
+    }
+
+    function deleteItem(id) { if(confirm("刪除？")) { let data = JSON.parse(localStorage.getItem('myMapData_v3')).filter(i => i.id !== id); localStorage.setItem('myMapData_v3', JSON.stringify(data)); renderList(); } }
+    function exportData() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([localStorage.getItem('myMapData_v3')], {type:'application/json'})); a.download = '雲端備份.json'; a.click(); }
+    function importData(input) { const reader = new FileReader(); reader.onload = e => { localStorage.setItem('myMapData_v3', e.target.result); renderList(); }; reader.readAsText(input.files[0]); }
+    
+    window.onload = () => { gapiLoaded(); gisLoaded(); renderList(); };
+</script>
+</body>
+</html>
